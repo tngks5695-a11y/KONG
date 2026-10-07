@@ -46,3 +46,42 @@ python3 force_converter.py
 | `abc` | `'abc' 은(는) 숫자가 아닙니다. 예: 12.5` |
 
 오류는 디스플레이에 표시됩니다. 입력을 수정하거나 지운 뒤 다시 변환할 수 있습니다.
+
+# CSV 하중 데이터 분석기
+
+`load_analyzer.py`는 CSV로 기록된 하중(힘) 데이터를 읽어 통계와 응력을 계산하고, 그래프와 결과 CSV를 저장하는 프로그램입니다.
+
+## 입력 열과 단위
+
+- `time_s`: 시간 (초, s)
+- `force_N`: 하중 (뉴턴, N)
+
+첫 줄은 열 이름이며, 한 줄이 한 시점의 데이터입니다.
+
+## 필요한 라이브러리
+
+- Python 3 표준 라이브러리 (`csv`, `tkinter` 등)
+- `matplotlib` (그래프를 PNG로 저장하는 데 사용, 별도 설치 필요: `python3 -m pip install matplotlib`)
+
+## 실행 방법
+
+```bash
+python3 load_analyzer.py            # load_data.csv를 읽음 (기본값)
+python3 load_analyzer.py load_bad.csv  # 다른 CSV 파일을 지정해 읽음
+```
+
+## 단면적 설정
+
+응력(σ = F / A, 단위 MPa)을 계산할 단면적은 `load_analyzer.py` 상단의 `CROSS_SECTION_AREA_MM2` 상수(기본값 100 mm²)로 설정합니다. 값을 바꾸면 응력 계산과 그래프에 바로 반영됩니다.
+
+## 출력 파일
+
+- `load_result.csv`: `time_s`, `force_N`, `stress_MPa` 열을 담은 결과 파일 (원본 `load_data.csv`는 수정하지 않음)
+- `stress_plot.png`: 시간-응력 그래프 (x축 Time (s), y축 Stress (MPa)), 최대 응력 지점을 빨간 점과 숫자로 표시
+
+## 오류 처리 규칙
+
+- `time_s` 또는 `force_N`이 빈칸이거나 숫자로 해석할 수 없으면 해당 행의 행 번호와 문제 값을 안내하고, 그 행을 계산과 그래프에서 제외합니다.
+- 실행이 끝나면 제외한 행 수와 유효한 데이터 수를 출력합니다.
+- 유효한 데이터가 하나도 없으면 계산을 멈추고 안내 메시지를 출력합니다.
+- 원본 CSV 파일은 읽기만 하며 어떤 경우에도 수정하지 않습니다.
