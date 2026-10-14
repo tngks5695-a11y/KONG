@@ -4,7 +4,7 @@ import csv
 import math
 import os
 import tkinter as tk
-from tkinter import filedialog, ttk
+from tkinter import filedialog, messagebox, ttk
 
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
@@ -145,6 +145,9 @@ class LoadAnalyzerApp:
         self.records = []
         self.skipped = []
         self.analysis_valid = False
+        self.stress_records = []
+        self.analysis_area = None
+        self.analysis_dimensions = {}
         self.dimension_vars = {
             key: tk.StringVar(value=value) for key, value in DEFAULT_DIMENSIONS.items()
         }
@@ -218,8 +221,12 @@ class LoadAnalyzerApp:
         self._result_row(result_card, 3, "최대 응력", self.stress_var, "MPa")
         self._result_row(result_card, 4, "발생 시간", self.stress_time_var, "s")
         ttk.Button(result_card, text="분석", command=self._analyze).grid(
-            row=5, column=0, columnspan=2, sticky="ew", pady=(10, 0), ipady=4
+            row=5, column=0, columnspan=3, sticky="ew", pady=(10, 0), ipady=4
         )
+        self.save_button = ttk.Button(
+            result_card, text="결과 CSV 저장…", command=self._save_results, state="disabled"
+        )
+        self.save_button.grid(row=6, column=0, columnspan=3, sticky="ew", pady=(6, 0), ipady=3)
         result_card.columnconfigure(1, weight=1)
 
         graph_card = self._card(body)
@@ -276,9 +283,14 @@ class LoadAnalyzerApp:
 
     def _clear_analysis(self):
         self.analysis_valid = False
+        self.stress_records = []
+        self.analysis_area = None
+        self.analysis_dimensions = {}
         self.area_var.set("—")
         self.stress_var.set("—")
         self.stress_time_var.set("—")
+        if hasattr(self, "save_button"):
+            self.save_button.configure(state="disabled")
 
     def _load_csv(self, path):
         self.csv_path = path
@@ -348,12 +360,58 @@ class LoadAnalyzerApp:
 
         stresses = [(time_s, force_n / area) for time_s, force_n in self.records]
         max_time, max_stress = max(stresses, key=lambda item: item[1])
+        active_keys = [key for key, _label in SECTIONS[self.section_var.get()]]
+        self.stress_records = stresses
+        self.analysis_area = area
+        self.analysis_dimensions = {key: dimensions[key].strip() for key in active_keys}
         self.area_var.set(format_number(area, 2))
         self.stress_var.set(format_number(max_stress, 4))
         self.stress_time_var.set(format_number(max_time))
         self.analysis_valid = True
+        self.save_button.configure(state="normal")
         self.status_var.set("분석 완료")
         self._draw_chart(stresses, (max_time, max_stress))
+
+    def _save_results(self):
+        if not self.analysis_valid or self.analysis_area is None:
+            self.status_var.set("먼저 데이터를 분석하세요.")
+            return
+
+        path = filedialog.asksaveasfilename(
+            title="분석 결과 CSV 저장",
+            initialdir=os.path.dirname(self.csv_path) if self.csv_path else BASE_DIR,
+            initialfile="load_analysis_results.csv",
+            defaultextension=".csv",
+            filetypes=(("CSV 파일", "*.csv"), ("모든 파일", "*.*")),
+        )
+        if not path:
+            return
+
+        dimension_columns = [f"{key}_mm" for key in self.analysis_dimensions]
+        fieldnames = ["time_s", "force_N", "stress_MPa", "section", "area_mm2"] + dimension_columns
+        try:
+            with open(path, "w", newline="", encoding="utf-8-sig") as csv_file:
+                writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+                writer.writeheader()
+                for (time_s, force_n), (_stress_time, stress_mpa) in zip(
+                    self.records, self.stress_records
+                ):
+                    row = {
+                        "time_s": time_s,
+                        "force_N": force_n,
+                        "stress_MPa": stress_mpa,
+                        "section": self.section_var.get(),
+                        "area_mm2": self.analysis_area,
+                    }
+                    row.update({f"{key}_mm": value for key, value in self.analysis_dimensions.items()})
+                    writer.writerow(row)
+        except (OSError, csv.Error) as error:
+            self.status_var.set("결과 CSV 저장에 실패했습니다.")
+            messagebox.showerror("저장 실패", f"CSV 파일을 저장하지 못했습니다.\n{error}", parent=self.root)
+            return
+
+        self.status_var.set(f"결과 CSV 저장 완료: {path}")
+        messagebox.showinfo("저장 완료", f"분석 결과를 저장했습니다.\n{path}", parent=self.root)
 
     def _draw_chart(self, stress_records=None, max_point=None):
         self.axes.clear()
